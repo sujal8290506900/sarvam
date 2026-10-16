@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Needs-to-Relief Matcher</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --line:#e4e7ec; --ink:#14181f; --muted:#667085;
+    --accent:#0d9488; --accent-ink:#0f766e;
+    --critical:#d92d20; --high:#dc6803; --medium:#b54708; --low:#067647;
+    --crit-bg:#fef3f2; --high-bg:#fffaeb; --med-bg:#fef6ee; --low-bg:#ecfdf3;
+    --radius:10px; --shadow:0 1px 2px rgba(16,24,40,.05);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;}
+  header{padding:18px 22px 14px;border-bottom:1px solid var(--line);background:var(--card)}
+  h1{margin:0;font-size:18px;letter-spacing:-.01em}
+  h1 .dot{color:var(--accent)}
+  .sub{margin:3px 0 0;color:var(--muted);font-size:12.5px}
+  .wrap{padding:16px 22px 40px;max-width:1360px;margin:0 auto}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+  button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);
+    color:var(--ink);padding:7px 12px;border-radius:8px;box-shadow:var(--shadow);transition:.12s}
+  button:hover{border-color:#cfd4dc}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:var(--accent-ink)}
+  button.ghost{background:transparent;box-shadow:none}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.mini{padding:3px 8px;font-size:12px;border-radius:6px;box-shadow:none}
+  .stats{margin-left:auto;display:flex;gap:16px;color:var(--muted);font-size:12.5px;flex-wrap:wrap}
+  .stats b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .grid{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:14px;align-items:start}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+  .card>h2{margin:0;padding:11px 14px;font-size:12.5px;font-weight:600;letter-spacing:.02em;
+    text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .card .body{padding:12px 14px}
+  textarea{width:100%;min-height:190px;resize:vertical;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    border:1px solid var(--line);border-radius:8px;padding:10px;color:var(--ink);background:#fcfcfd}
+  textarea:focus{outline:2px solid #99f6e4;border-color:var(--accent)}
+  .hint{color:var(--muted);font-size:12px;margin:8px 0 0}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;
+    padding:2px 7px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
+  .badge .sw{width:7px;height:7px;border-radius:50%}
+  .b-critical{background:var(--crit-bg);color:var(--critical);border-color:#fecdca}
+  .b-high{background:var(--high-bg);color:var(--high);border-color:#fedf89}
+  .b-medium{background:var(--med-bg);color:var(--medium);border-color:#f9dbaf}
+  .b-low{background:var(--low-bg);color:var(--low);border-color:#abefc6}
+  .b-critical .sw{background:var(--critical)}.b-high .sw{background:var(--high)}
+  .b-medium .sw{background:var(--medium)}.b-low .sw{background:var(--low)}
+  .chip{display:inline-block;font-size:11px;color:var(--muted);background:#f2f4f7;
+    border-radius:6px;padding:1px 6px;margin-left:6px}
+  ul.queue{list-style:none;margin:0;padding:0;max-height:420px;overflow:auto}
+  li.need{padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;gap:10px;align-items:flex-start}
+  li.need:last-child{border-bottom:0}
+  li.need:hover{background:#fafbfc}
+  li.need.sel{background:#f0fdfa;box-shadow:inset 3px 0 0 var(--accent)}
+  li.need.done{opacity:.5}
+  .need .main{flex:1;min-width:0}
+  .need .t{font-weight:600;font-size:13px}
+  .need .m{color:var(--muted);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .qty{font-variant-numeric:tabular-nums;font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;
+    letter-spacing:.02em;padding:6px 8px;border-bottom:1px solid var(--line)}
+  td{padding:8px;border-bottom:1px solid #f0f1f3;vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  tr.cand:hover{background:#fafbfc}
+  .num{font-variant-numeric:tabular-nums;text-align:right}
+  .score{font-weight:700;font-variant-numeric:tabular-nums}
+  .bd{color:var(--muted);font-size:11px;margin-top:3px;font-variant-numeric:tabular-nums}
+  .bar{height:6px;border-radius:3px;background:#eef0f3;overflow:hidden;margin-top:4px}
+  .bar>span{display:block;height:100%;background:var(--accent)}
+  .empty{color:var(--muted);font-size:12.5px;padding:18px 14px;text-align:center}
+  .board{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  @media(max-width:900px){.board{grid-template-columns:repeat(2,1fr)}}
+  .col{background:#fafbfc;border:1px solid var(--line);border-radius:8px;min-height:90px}
+  .col h3{margin:0;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;
+    color:var(--muted);border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
+  .col .cbody{padding:8px;display:flex;flex-direction:column;gap:8px;max-height:340px;overflow:auto}
+  .dcard{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 9px;font-size:12px}
+  .dcard .dt{font-weight:600}
+  .dcard .dm{color:var(--muted);margin-top:3px;font-size:11.5px}
+  .dcard .acts{margin-top:7px;display:flex;gap:6px}
+  .inv{display:grid;gap:8px}
+  .invrow{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:6px 0;border-bottom:1px dashed #eceef1}
+  .invrow:last-child{border-bottom:0}
+  .invrow .nm{font-weight:600}
+  .stock{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+  .stock span{font-size:10.5px;background:#f2f4f7;color:#475467;border-radius:5px;padding:1px 6px;font-variant-numeric:tabular-nums}
+  .stock span.zero{color:#98a2b3;text-decoration:line-through}
+  details.legend{margin-top:4px}
+  details.legend summary{cursor:pointer;color:var(--muted);font-size:12px}
+  .legend code{background:#f2f4f7;padding:1px 5px;border-radius:4px;font-size:11.5px}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#101828;color:#fff;
+    padding:9px 14px;border-radius:8px;font-size:12.5px;opacity:0;pointer-events:none;transition:.2s}
+  .toast.on{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>Needs&#8209;to&#8209;Relief Matcher <span class="dot">&#9679;</span></h1>
+  <p class="sub">Extracts relief requirements from incident reports, matches them against warehouse inventories, and recommends prioritised dispatches with routing ETA.</p>
+</header>
+
+<div class="wrap">
+  <div class="toolbar">
+    <button class="primary" id="btnExtract">Extract needs</button>
+    <button id="btnSuggest">Suggest all dispatches</button>
+    <button class="ghost" id="btnSample">Load sample scenario</button>
+    <button class="ghost" id="btnReset">Reset</button>
+    <div class="stats" id="stats"></div>
+  </div>
+
+  <div class="grid">
+    <!-- LEFT -->
+    <div>
+      <div class="card">
+        <h2>Incident intake <span id="reportCount" class="chip">0 reports</span></h2>
+        <div class="body">
+          <textarea id="intake" placeholder="Paste one or more incoming disaster incident reports. Each report starts with a line such as:&#10;Incident Report #DR-2291 — Silchar Flood Response&#10;District: Silchar&#10;Requirements:&#10;- 12,000 litres drinking water&#10;- 250 first-aid kits&#10;Priority: CRITICAL"></textarea>
+          <p class="hint">Structured reports work best: a <b>District/Location</b> line, a bulleted <b>Requirements</b> list, and a <b>Priority</b> line. Quantities, categories and urgency are parsed automatically.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Warehouse inventory</h2>
+        <div class="body"><div class="inv" id="inventory"></div></div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div>
+      <div class="card">
+        <h2>Needs queue <span id="needCount" class="chip">0</span></h2>
+        <ul class="queue" id="queue"></ul>
+      </div>
+
+      <div class="card" id="matchCard" style="display:none">
+        <h2>Match &amp; dispatch recommendation</h2>
+        <div class="body" id="matchBody"></div>
+      </div>
+
+      <div class="card">
+        <h2>Dispatch board</h2>
+        <div class="body">
+          <div class="board" id="board"></div>
+          <details class="legend">
+            <summary>How candidates are scored</summary>
+            <p class="hint" style="margin-top:8px">Each source is scored 0&ndash;1 on four factors and combined:<br>
+              <code>0.40&nbsp;&times;&nbsp;distance</code> (nearer is better, 300&nbsp;km horizon) &nbsp;+&nbsp;
+              <code>0.30&nbsp;&times;&nbsp;quantity fit</code> (available &divide; needed) &nbsp;+&nbsp;
+              <code>0.15&nbsp;&times;&nbsp;urgency</code> &nbsp;+&nbsp;
+              <code>0.15&nbsp;&times;&nbsp;availability</code>.<br>
+              ETA = straight-line distance at 40&nbsp;km/h plus 20&nbsp;min loading. Stock is <b>reserved</b> while a dispatch is active and only <b>decremented</b> on delivery, so no pallet is promised twice. A human coordinator stays in charge and can override any recommendation.</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= ENGINE (verified, pure) ================= */
+/* ============================================================
+   Needs-to-Relief Matcher — core engine (pure, DOM-free)
+   - extracts relief requirements from incident reports
+   - matches needs against warehouse inventories
+   - ranks + prioritises dispatch recommendations
+   ============================================================ */
+
+/* ---------- Geo ---------- */
+function haversine(a, b) {
+  const R = 6371;
+  const toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const la1 = toRad(a.lat), la2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/* ---------- Category vocabulary (aligned to OCHA clusters / UNHCR NFIs) ---------- */
+const CATEGORIES = {
+  water:      { label: 'Water',      unit: 'litres', keywords: ['water', 'drinking water', 'potable', 'jal'] },
+  food:       { label: 'Food',       unit: 'packets', keywords: ['food', 'ration', 'meal', 'biscuit', 'rice', 'khichdi', 'baby food', 'milk powder'] },
+  medicine:   { label: 'Medicine',   unit: 'kits',   keywords: ['medicine', 'first-aid', 'first aid', 'ors', 'insulin', 'vaccine', 'drug', 'medical', 'medkit', 'antibiotic'] },
+  shelter:    { label: 'Shelter',    unit: 'units',  keywords: ['shelter', 'tarpaulin', 'tent', 'plastic sheet', 'polythene', 'rope'] },
+  hygiene:    { label: 'Hygiene',    unit: 'kits',   keywords: ['hygiene', 'soap', 'sanitary', 'sanitiser', 'sanitizer', 'toothpaste', 'dignity kit'] },
+  blankets:   { label: 'Blankets',   unit: 'units',  keywords: ['blanket', 'bedding', 'sleeping mat', 'quilt', 'mosquito net'] },
+  fuel:       { label: 'Fuel',       unit: 'litres', keywords: ['fuel', 'diesel', 'petrol', 'kerosene', 'generator'] },
+  sanitation: { label: 'Sanitation', unit: 'units',  keywords: ['sanitation', 'toilet', 'latrine', 'washroom'] }
+};
+
+const URGENCY_WEIGHT = { critical: 1.0, high: 0.7, medium: 0.45, low: 0.2 };
+const URGENCY_RANK   = { critical: 4, high: 3, medium: 2, low: 1 };
+
+const UNIT_ALIASES = {
+  l: 'litres', lt: 'litres', ltr: 'litres', ltrs: 'litres', litre: 'litres', litres: 'litres', liter: 'litres', liters: 'litres',
+  kg: 'kg', kgs: 'kg', kilo: 'kg', kilos: 'kg', tonne: 'tonnes', tonnes: 'tonnes', ton: 'tonnes', tons: 'tonnes',
+  packet: 'packets', packets: 'packets', pkt: 'packets', pkts: 'packets',
+  kit: 'kits', kits: 'kits',
+  unit: 'units', units: 'units', piece: 'units', pieces: 'units', pcs: 'units',
+  bottle: 'bottles', bottles: 'bottles', bag: 'bags', bags: 'bags',
+  blanket: 'units', blankets: 'units', tarpaulin: 'units', tarpaulins: 'units',
+  tanker: 'tankers', tankers: 'tankers'
+};
+
+/* ---------- Extraction ---------- */
+function classify(text) {
+  const t = ' ' + text.toLowerCase() + ' ';
+  let best = null, bestScore = 0;
+  for (const [key, meta] of Object.entries(CATEGORIES)) {
+    let score = 0;
+    for (const kw of meta.keywords) if (t.includes(kw)) score += kw.split(' ').length; // longer phrases win
+    if (score > bestScore) { bestScore = score; best = key; }
+  }
+  return best;
+}
+
+function parseQuantity(text) {
+  const m = text.match(/(\d[\d,]*(?:\.\d+)?)\s*([a-zA-Z]+)?/);
+  if (!m) return null;
+  const qty = parseFloat(m[1].replace(/,/g, ''));
+  if (!isFinite(qty) || qty <= 0) return null;
+  const rawUnit = (m[2] || '').toLowerCase();
+  return { qty, rawUnit };
+}
+
+function detectUrgency(text) {
+  const t = text.toLowerCase();
+  if (/\b(critical|life[- ]threatening|immediate|emergency|severe|asap)\b/.test(t)) return 'critical';
+  if (/\b(high|priority|escalate|urgent)\b/.test(t)) return 'high';
+  if (/\b(low|routine|non[- ]urgent)\b/.test(t)) return 'low';
+  if (/\b(medium|moderate)\b/.test(t)) return 'medium';
+  return null;
+}
+
+function extractNeeds(report, prefix) {
+  const text = report || '';
+  const needs = [];
+  const pfx = prefix || 'N';
+  let seq = 0;
+
+  // Report-level context
+  const locMatch = text.match(/(?:location|district|site|place)\s*[:\-]\s*([^\n,]+)/i);
+  const reportLocation = locMatch ? locMatch[1].trim() : 'Unspecified site';
+  const prioMatch = text.match(/priority\s*[:\-]\s*(critical|high|medium|low)/i);
+  const reportUrgency = prioMatch ? prioMatch[1].toLowerCase() : (detectUrgency(text) || 'medium');
+
+  const lines = text.split(/\n+/);
+  for (const rawLine of lines) {
+    if (/^\s*(priority|location|district|site|place|time|situation|incident)\s*[:\-]/i.test(rawLine)) continue;
+    // split a line into item segments: commas, semicolons, " and "
+    // (a comma between two digits is a thousands separator, never a split point)
+    const segments = rawLine.replace(/^[\s\-\u2022*]+/, '').split(/(?<!\d)[,;]|\band\b/gi);
+    for (const seg of segments) {
+      const s = seg.trim();
+      if (!s) continue;
+      const cat = classify(s);
+      if (!cat) continue;
+      const q = parseQuantity(s);
+      if (!q) continue;                         // a requirement needs a quantity
+      const u = detectUrgency(s) || reportUrgency;
+      const unit = q.rawUnit && UNIT_ALIASES[q.rawUnit] ? UNIT_ALIASES[q.rawUnit] : CATEGORIES[cat].unit;
+      needs.push({
+        id: pfx + (++seq),
+        item: s.replace(/\s+/g, ' ').slice(0, 90),
+        category: cat,
+        qty: q.qty,
+        unit,
+        urgency: u,
+        location: reportLocation
+      });
+    }
+  }
+  return { needs, reportLocation, reportUrgency };
+}
+
+/* ---------- Matching ---------- */
+const WEIGHTS = { distance: 0.40, quantity: 0.30, urgency: 0.15, availability: 0.15 };
+
+function available(w, category, reserved) {
+  const stock = (w.stock && w.stock[category]) || 0;
+  const held = reserved[w.id + ':' + category] || 0;
+  return Math.max(0, stock - held);
+}
+
+function matchNeed(need, warehouses, reserved, needCoords) {
+  const coords = needCoords || need.coords;
+  const cands = [];
+  for (const w of warehouses) {
+    const avail = available(w, need.category, reserved);
+    if (avail <= 0) continue;
+    const dist = haversine(coords, w);
+    const dScore = Math.max(0, 1 - dist / 300);          // 300 km horizon
+    const qScore = Math.min(1, avail / need.qty);
+    const uScore = URGENCY_WEIGHT[need.urgency];
+    const aScore = avail > 0 ? 1 : 0;
+    const composite =
+      WEIGHTS.distance * dScore +
+      WEIGHTS.quantity * qScore +
+      WEIGHTS.urgency * uScore +
+      WEIGHTS.availability * aScore;
+    const sendQty = Math.min(avail, need.qty);
+    const etaHours = dist / 40 + 0.33;                   // 40 km/h avg + 20 min loading
+    cands.push({
+      warehouse: w, avail, dist, dScore, qScore, uScore, aScore, composite,
+      sendQty, coverage: sendQty / need.qty, etaHours
+    });
+  }
+  cands.sort((a, b) => b.composite - a.composite);
+  return cands;
+}
+
+/* Greedy board-wide allocation: most urgent first, never double-book stock. */
+function suggestAll(needs, warehouses, coordsByNeed) {
+  const ordered = [...needs].sort((a, b) =>
+    (URGENCY_RANK[b.urgency] - URGENCY_RANK[a.urgency]) || (a.id > b.id ? 1 : -1));
+  const reserved = {};
+  const plan = [];
+  for (const need of ordered) {
+    const cands = matchNeed(need, warehouses, reserved, coordsByNeed[need.id]);
+    if (!cands.length) { plan.push({ need, match: null }); continue; }
+    const best = cands[0];
+    reserved[best.warehouse.id + ':' + need.category] =
+      (reserved[best.warehouse.id + ':' + need.category] || 0) + best.sendQty;
+    plan.push({ need, match: best });
+  }
+  return plan;
+}
+
+/* ---------- Location registry ---------- */
+const LOCATIONS = {
+  'Silchar':   { lat: 24.83, lng: 92.78 },
+  'Cachar':    { lat: 24.83, lng: 92.79 },
+  'Karimganj': { lat: 24.87, lng: 92.36 },
+  'Hailakandi':{ lat: 24.68, lng: 92.56 },
+  'Guwahati':  { lat: 26.14, lng: 91.74 },
+  'Shillong':  { lat: 25.57, lng: 91.88 },
+  'Agartala':  { lat: 23.83, lng: 91.28 },
+  'Imphal':    { lat: 24.82, lng: 93.94 },
+  'Patna':     { lat: 25.59, lng: 85.14 }
+};
+
+function coordsFor(location) {
+  for (const [k, v] of Object.entries(LOCATIONS)) {
+    if (location && location.toLowerCase().includes(k.toLowerCase())) return v;
+  }
+  return LOCATIONS['Silchar'];
+}
+
+/* ---------- Sample scenario data ---------- */
+const SAMPLE_WAREHOUSES = [
+  { id: 'W1', name: 'Guwahati Central Depot',   lat: 26.14, lng: 91.74, stock: { water: 30000, food: 12000, medicine: 900, shelter: 1400, hygiene: 3000, blankets: 2500, fuel: 6000, sanitation: 300 } },
+  { id: 'W2', name: 'Silchar Field Store',      lat: 24.83, lng: 92.78, stock: { water: 9000,  food: 3500,  medicine: 250, shelter: 400,  hygiene: 900,  blankets: 700,  fuel: 1500, sanitation: 120 } },
+  { id: 'W3', name: 'Agartala Relief Hub',      lat: 23.83, lng: 91.28, stock: { water: 15000, food: 6000,  medicine: 500, shelter: 800,  hygiene: 1600, blankets: 1200, fuel: 3000, sanitation: 200 } },
+  { id: 'W4', name: 'Shillong Pre-position',    lat: 25.57, lng: 91.88, stock: { water: 12000, food: 5000,  medicine: 400, shelter: 600,  hygiene: 1200, blankets: 1500, fuel: 2500, sanitation: 0   } },
+  { id: 'W5', name: 'Imphal Regional Depot',    lat: 24.82, lng: 93.94, stock: { water: 18000, food: 7000,  medicine: 650, shelter: 900,  hygiene: 1800, blankets: 1100, fuel: 3500, sanitation: 150 } }
+];
+
+const SAMPLE_REPORTS = [
+`Incident Report #DR-2291 — Silchar Flood Response
+District: Silchar
+Time: 14:20 IST
+Situation: 4,200 people displaced across 6 relief camps after the Barak river breached its embankment. Two camps report no clean water since morning.
+Requirements:
+- 12,000 litres drinking water urgently needed at Silchar camp
+- 800 food packets
+- 250 first-aid kits and ORS
+- 300 tarpaulins for emergency shelter
+- 500 blankets for the night
+- 1,000 hygiene kits
+- 2,000 litres diesel for generator
+Priority: CRITICAL`,
+
+`Incident Report #DR-2302 — Karimganj Landslide
+District: Karimganj
+Time: 09:05 IST
+Situation: Access road cut off; 600 people in two schools. Water and medicine running low but supplies are holding for now.
+Requirements:
+- 3,000 litres water
+- 150 medicine kits
+- 40 tarpaulins
+- 200 blankets
+Priority: HIGH`
+];
+
+/* ================= APP ================= */
+(function(){
+  const $ = (id) => document.getElementById(id);
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+
+  const S = {
+    warehouses: clone(SAMPLE_WAREHOUSES),
+    needs: [],
+    dispatches: [],
+    reserved: {},
+    selected: null,
+    dispatchSeq: 0
+  };
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const fmt = (n) => Number(n).toLocaleString('en-IN');
+  const CAT = (c) => CATEGORIES[c] ? CATEGORIES[c].label : c;
+  const coordsByNeed = () => { const m={}; S.needs.forEach(n => m[n.id] = coordsFor(n.location)); return m; };
+
+  function badge(u){ return `<span class="badge b-${u}"><span class="sw"></span>${u}</span>`; }
+
+  function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('on'),2200); }
+
+  function splitReports(text){
+    const parts = text.split(/\n(?=\s*Incident Report)/i).map(s=>s.trim()).filter(Boolean);
+    return parts.length ? parts : [text];
+  }
+
+  /* ---------- actions ---------- */
+  function loadSample(){
+    $('intake').value = SAMPLE_REPORTS.join('\n\n');
+    S.warehouses = clone(SAMPLE_WAREHOUSES);
+    doExtract();
+    toast('Sample scenario loaded');
+  }
+
+  function doExtract(){
+    const text = $('intake').value.trim();
+    if(!text){ toast('Paste a report first'); return; }
+    const reports = splitReports(text);
+    let all = [];
+    reports.forEach((r,i) => { all = all.concat(extractNeeds(r, 'R'+(i+1)+'-').needs); });
+    S.needs = all;
+    $('reportCount').textContent = reports.length + ' report' + (reports.length>1?'s':'');
+    S.dispatches = []; S.reserved = {}; S.selected = null;
+    renderAll();
+    toast(all.length ? `Extracted ${all.length} requirements from ${reports.length} report(s)` : 'No requirements found — check the report format');
+  }
+
+  function reset(){
+    S.warehouses = clone(SAMPLE_WAREHOUSES);
+    S.needs=[]; S.dispatches=[]; S.reserved={}; S.selected=null;
+    $('intake').value='';
+    $('reportCount').textContent = '0 reports';
+    renderAll();
+  }
+
+  function selectNeed(id){ S.selected = (S.selected===id? null : id); renderAll(); }
+
+  function needById(id){ return S.needs.find(n=>n.id===id); }
+
+  function makeDispatch(need, cand){
+    S.dispatchSeq++;
+    const k = cand.warehouse.id + ':' + need.category;
+    S.reserved[k] = (S.reserved[k]||0) + cand.sendQty;
+    const d = {
+      id:'D'+S.dispatchSeq, need, whId:cand.warehouse.id, whName:cand.warehouse.name,
+      qty:cand.sendQty, unit:need.unit, eta:cand.etaHours, dist:cand.dist,
+      status:'Matched', coverage:cand.coverage
+    };
+    S.dispatches.push(d);
+    return d;
+  }
+
+  function dispatchTop(needId){
+    const need = needById(needId); if(!need) return;
+    if(S.dispatches.some(d=>d.need.id===needId && d.status!=='Delivered')){ toast('Already dispatched'); return; }
+    const cands = matchNeed(need, S.warehouses, S.reserved, coordsFor(need.location));
+    if(!cands.length){ toast('No source with stock for '+CAT(need.category)); return; }
+    makeDispatch(need, cands[0]);
+    renderAll();
+    toast(`Dispatch created: ${fmt(cands[0].sendQty)} ${need.unit} of ${CAT(need.category)} from ${cands[0].warehouse.name}`);
+  }
+
+  function advance(dispId){
+    const d = S.dispatches.find(x=>x.id===dispId); if(!d) return;
+    if(d.status==='Matched') d.status='En route';
+    else if(d.status==='En route'){ d.status='Delivered'; d.need.filled=true; }
+    else return;
+    renderAll();
+  }
+
+  function suggestAllDispatches(){
+    const open = S.needs.filter(n => !S.dispatches.some(d=>d.need.id===n.id && d.status!=='Delivered'));
+    if(!open.length){ toast('Nothing left to plan'); return; }
+    const plan = suggestAll(open, S.warehouses, coordsByNeed());
+    let made=0, gaps=0;
+    for(const p of plan){
+      if(p.match){ makeDispatch(p.need, p.match); made++; } else gaps++;
+    }
+    renderAll();
+    toast(`Planned ${made} dispatch(es)` + (gaps? ` · ${gaps} need(s) with no available source` : ''));
+  }
+
+  /* ---------- render ---------- */
+  function renderAll(){ renderStats(); renderInventory(); renderQueue(); renderMatch(); renderBoard(); }
+
+  function renderStats(){
+    const crit = S.needs.filter(n=>n.urgency==='critical').length;
+    const deliv = S.dispatches.filter(d=>d.status==='Delivered').length;
+    $('stats').innerHTML =
+      `<span>Needs <b>${S.needs.length}</b></span>`+
+      `<span>Critical <b>${crit}</b></span>`+
+      `<span>Dispatches <b>${S.dispatches.length}</b></span>`+
+      `<span>Delivered <b>${deliv}</b></span>`;
+  }
+
+  function renderInventory(){
+    const cats = Object.keys(CATEGORIES);
+    $('inventory').innerHTML = S.warehouses.map(w=>{
+      const chips = cats.map(c=>{
+        const base = w.stock[c]||0;
+        const held = S.reserved[w.id+':'+c]||0;
+        const avail = Math.max(0, base-held);
+        const cls = avail===0 ? 'zero':'';
+        return `<span class="${cls}" title="${CAT(c)} — ${fmt(avail)} available of ${fmt(base)}">${CAT(c)} ${fmt(avail)}</span>`;
+      }).join('');
+      return `<div><div class="invrow"><span class="nm">${esc(w.name)}</span><span style="color:var(--muted)">${w.lat.toFixed(1)}, ${w.lng.toFixed(1)}</span></div><div class="stock">${chips}</div></div>`;
+    }).join('');
+  }
+
+  function renderQueue(){
+    const q = $('queue');
+    $('needCount').textContent = S.needs.length;
+    if(!S.needs.length){ q.innerHTML = `<li class="empty">No needs yet. Load the sample scenario or paste a report and press <b>Extract needs</b>.</li>`; return; }
+    const order = {critical:4,high:3,medium:2,low:1};
+    const sorted = [...S.needs].sort((a,b)=> (order[b.urgency]-order[a.urgency]) || (b.qty-a.qty));
+    q.innerHTML = sorted.map(n=>{
+      const disp = S.dispatches.find(d=>d.need.id===n.id && d.status!=='Delivered');
+      const done = n.filled;
+      return `<li class="need ${S.selected===n.id?'sel':''} ${done?'done':''}" data-id="${n.id}">
+        <div class="main">
+          <div class="t">${CAT(n.category)} <span class="qty">&middot; ${fmt(n.qty)} ${esc(n.unit)}</span>${done?' <span class="chip">delivered</span>':(disp?` <span class="chip">${disp.status}</span>`:'')}</div>
+          <div class="m">${esc(n.item)}</div>
+        </div>
+        <div>${badge(n.urgency)}</div>
+      </li>`;
+    }).join('');
+    q.querySelectorAll('li.need').forEach(li=> li.onclick = ()=> selectNeed(li.dataset.id));
+  }
+
+  function renderMatch(){
+    const card = $('matchCard'), body = $('matchBody');
+    if(!S.selected){ card.style.display='none'; return; }
+    const need = needById(S.selected);
+    if(!need){ card.style.display='none'; return; }
+    card.style.display='block';
+
+    const cands = matchNeed(need, S.warehouses, S.reserved, coordsFor(need.location));
+    const rows = cands.slice(0,6).map(c=>{
+      const bd = `D 0.40&times;${c.dScore.toFixed(2)} <b>${(WEIGHTS.distance*c.dScore).toFixed(2)}</b> &middot; `
+        + `Q 0.30&times;${c.qScore.toFixed(2)} <b>${(WEIGHTS.quantity*c.qScore).toFixed(2)}</b> &middot; `
+        + `U 0.15&times;${c.uScore.toFixed(2)} <b>${(WEIGHTS.urgency*c.uScore).toFixed(2)}</b> &middot; `
+        + `A 0.15&times;${c.aScore.toFixed(2)} <b>${(WEIGHTS.availability*c.aScore).toFixed(2)}</b>`;
+      const partial = c.coverage < 1 ? ` <span style="color:var(--high)">(partial ${(c.coverage*100).toFixed(0)}%)</span>` : '';
+      return `<tr class="cand">
+        <td><b>${esc(c.warehouse.name)}</b><div class="bd">${bd}</div></td>
+        <td class="num">${c.dist.toFixed(0)} km</td>
+        <td class="num">${c.etaHours.toFixed(1)} h</td>
+        <td class="num">${fmt(c.sendQty)} ${esc(need.unit)}${partial}</td>
+        <td class="num score">${c.composite.toFixed(3)}<div class="bar"><span style="width:${(c.composite*100).toFixed(0)}%"></span></div></td>
+        <td class="num"><button class="mini primary" data-wh="${c.warehouse.id}">Dispatch</button></td>
+      </tr>`;
+    }).join('');
+
+    body.innerHTML = `
+      <div style="margin-bottom:10px">
+        <div style="font-weight:600">${CAT(need.category)} &middot; ${fmt(need.qty)} ${esc(need.unit)} ${badge(need.urgency)}</div>
+        <div class="m" style="color:var(--muted);font-size:12px">${esc(need.item)} &middot; site: ${esc(need.location)}</div>
+      </div>
+      ${cands.length ? `<table>
+        <thead><tr><th>Source (weighted breakdown)</th><th class="num">Distance</th><th class="num">ETA</th><th class="num">Send</th><th class="num">Score</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table>` : `<div class="empty">No warehouse currently has available stock for ${CAT(need.category)}.</div>`}`;
+
+    body.querySelectorAll('button[data-wh]').forEach(b=> b.onclick = ()=>{
+      const need2 = needById(S.selected);
+      const c = matchNeed(need2, S.warehouses, S.reserved, coordsFor(need2.location)).find(x=>x.warehouse.id===b.dataset.wh);
+      if(c){ makeDispatch(need2, c); renderAll(); toast(`Dispatch created from ${c.warehouse.name}`); }
+    });
+  }
+
+  function renderBoard(){
+    const cols = [['Requested',null],['Matched',null],['En route',null],['Delivered',null]];
+    const data = {Requested:[],Matched:[],'En route':[],Delivered:[]};
+    // Requested = open needs with no active dispatch
+    S.needs.forEach(n=>{
+      const active = S.dispatches.find(d=>d.need.id===n.id && d.status!=='Delivered');
+      if(!active && !n.filled) data['Requested'].push({need:n});
+    });
+    S.dispatches.forEach(d=> data[d.status].push({disp:d}));
+
+    $('board').innerHTML = cols.map(([name])=>{
+      const items = data[name];
+      const cards = items.map(it=>{
+        if(it.need){
+          const n = it.need;
+          return `<div class="dcard"><div class="dt">${CAT(n.category)} &middot; ${fmt(n.qty)} ${esc(n.unit)}</div>
+            <div class="dm">${badge(n.urgency)} &middot; ${esc(n.location)}</div>
+            <div class="acts"><button class="mini" data-need="${n.id}">Find source</button></div></div>`;
+        }
+        const d = it.disp;
+        const act = d.status==='Matched' ? 'Mark en route' : d.status==='En route' ? 'Mark delivered' : '';
+        return `<div class="dcard"><div class="dt">${CAT(d.need.category)} &middot; ${fmt(d.qty)} ${esc(d.unit)}</div>
+          <div class="dm">from ${esc(d.whName)}<br>ETA ${d.eta.toFixed(1)} h &middot; ${d.dist.toFixed(0)} km${d.coverage<1?' &middot; partial':''}</div>
+          ${act?`<div class="acts"><button class="mini" data-adv="${d.id}">${act}</button></div>`:''}</div>`;
+      }).join('') || `<div class="empty" style="padding:12px">—</div>`;
+      return `<div class="col"><h3>${name}<span>${items.length}</span></h3><div class="cbody">${cards}</div></div>`;
+    }).join('');
+
+    $('board').querySelectorAll('button[data-adv]').forEach(b=> b.onclick=()=> advance(b.dataset.adv));
+    $('board').querySelectorAll('button[data-need]').forEach(b=> b.onclick=()=> selectNeed(b.dataset.need));
+  }
+
+  /* ---------- wire up ---------- */
+  $('btnExtract').onclick = doExtract;
+  $('btnSample').onclick = loadSample;
+  $('btnReset').onclick = reset;
+  $('btnSuggest').onclick = suggestAllDispatches;
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
